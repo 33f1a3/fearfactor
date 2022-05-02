@@ -6,7 +6,9 @@ import matplotlib.colors as cl
 from matplotlib.text import TextPath
 import matplotlib as mpl
 from string import *
-import argparse, os, sys, joblib
+import argparse, os, sys, joblib, warnings
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 forest = joblib.load('fearfactorxg.joblib')
 importances = forest.feature_importances_
@@ -29,7 +31,7 @@ os.chdir('../../')
 
 cols = {'ANA':'#b85e0b','ARI':'#7d1db3','BOS':'#ffec00','BUF':'#b653fb','CAR':'#963e3e','CBJ':'#475483','CGY':'#b45300','CHI':'#8d6b0a','COL':'#6b051f','DAL':'#007f16','DET':'#ff0000','EDM':'#352247','FLA':'#77d200','LAK':'#380078','MIN':'#003a07','MTL':'#ec0365','NJD':'#ab0027','NSH':'#f3bf00','NYI':'#0078ff','NYR':'#07b182','OTT':'#805700','PHI':'#ff7c00','PIT':'#19bcd1','SEA':'#00c9b5','SJS':'#016072','STL':'#000df0','TBL':'#150078','TOR':'#363caf','VAN':'#5c6c98','VGK':'#bca900','WPG':'#140e6b','WSH':'#990276'}
 # mpl.rc('text', usetex=True)
-mpl.rcParams.update({'font.size': 12})
+mpl.rcParams.update({'font.size': 14})
 mpl.rcParams.update({'font.family': 'Inconsolata'})
 
 home_team = pbp['Home_Team'][0]
@@ -100,7 +102,19 @@ marks = [(3,0,a+90) if y>=0 and t==away_team #and p<5
     for a, t, y, p in zip(angles, event_team, yc_plot, per)]
 marks = np.asarray(marks)
 
-fig, ax = plt.subplots(1, figsize=(8,4), constrained_layout=True)
+### ACTUAL PLOTTING
+
+mosaic = """
+    AA
+    xy
+"""
+
+# fig, ax = plt.subplots(1, figsize=(8,4), constrained_layout=True)
+goalcount = len(event_team[events=='GOAL'])
+heightmod = goalcount*0.2
+
+ax = plt.figure(figsize=(9,5+heightmod), constrained_layout=True).subplot_mosaic(mosaic,
+    gridspec_kw={'height_ratios':[1,0.3*heightmod], 'width_ratios':[1,0.75]})
 
 for i in range(len(xc_plot[events=='SHOT'])):
 
@@ -109,44 +123,42 @@ for i in range(len(xc_plot[events=='SHOT'])):
 
     if strstr1 > strstr2:
         if event_team[events=='SHOT'][i]==home_team:
-            ax.scatter(xc_plot[events=='SHOT'][i],
+            ax['A'].scatter(xc_plot[events=='SHOT'][i],
                yc_plot[events=='SHOT'][i],
                s=(all_xg[events=='SHOT'][i]+0.01)*3000, linewidth=2,
                edgecolor=cols[event_team[events=='SHOT'][i]], facecolor='none',
                alpha=1, marker=marks[events=='SHOT'][i])
         elif event_team[events=='SHOT'][i]==away_team:
-            ax.scatter(xc_plot[events=='SHOT'][i],
+            ax['A'].scatter(xc_plot[events=='SHOT'][i],
                yc_plot[events=='SHOT'][i],
                s=(all_xg[events=='SHOT'][i]+0.01)*3000, linewidth=2,
-               facecolor=cols[event_team[events=='SHOT'][i]], edgecolor='none',
-               alpha=1, marker=marks[events=='SHOT'][i])
+               edgecolor=cols[event_team[events=='SHOT'][i]], facecolor='none',
+               alpha=1, marker=marks[events=='SHOT'][i], linestyle='dotted')
     elif strstr1 < strstr2:
         if event_team[events=='SHOT'][i]==home_team:
-            ax.scatter(xc_plot[events=='SHOT'][i],
+            ax['A'].scatter(xc_plot[events=='SHOT'][i],
                yc_plot[events=='SHOT'][i],
                s=(all_xg[events=='SHOT'][i]+0.01)*3000, linewidth=2,
-               facecolor=cols[event_team[events=='SHOT'][i]], edgecolor='none',
-               alpha=1, marker=marks[events=='SHOT'][i])
+               edgecolor=cols[event_team[events=='SHOT'][i]], facecolor='none',
+               alpha=1, marker=marks[events=='SHOT'][i], linestyle='dotted')
         elif event_team[events=='SHOT'][i]==away_team:
-            ax.scatter(xc_plot[events=='SHOT'][i],
+            ax['A'].scatter(xc_plot[events=='SHOT'][i],
                yc_plot[events=='SHOT'][i],
                s=(all_xg[events=='SHOT'][i]+0.01)*3000, linewidth=2,
                edgecolor=cols[event_team[events=='SHOT'][i]], facecolor='none',
                alpha=1, marker=marks[events=='SHOT'][i])
     elif per[events=='SHOT'][i] == 5:
-        ax.scatter(xc_plot[events=='SHOT'][i],
+        ax['A'].scatter(xc_plot[events=='SHOT'][i],
            yc_plot[events=='SHOT'][i],
            s=(all_xg[events=='SHOT'][i]+0.01)*3000, linewidth=1,
            edgecolor='k', facecolor='none',
            alpha=1, marker=marks[events=='SHOT'][i])
     else:
-         ax.scatter(xc_plot[events=='SHOT'][i],
+         ax['A'].scatter(xc_plot[events=='SHOT'][i],
              yc_plot[events=='SHOT'][i],
              s=(all_xg[events=='SHOT'][i]+0.01)*3000,
              facecolor=cols[event_team[events=='SHOT'][i]], edgecolor='none',
              alpha=0.5, marker=marks[events=='SHOT'][i])
-
-# if per[events=='SHOT'][i] != 5:
 
 for i in range(len(xc_plot[events=='MISS'])):
 
@@ -155,46 +167,53 @@ for i in range(len(xc_plot[events=='MISS'])):
 
     if strstr1 > strstr2:
         if event_team[events=='MISS'][i]==home_team:
-            ax.scatter(xc_plot[events=='MISS'][i],
+            ax['A'].scatter(xc_plot[events=='MISS'][i],
                yc_plot[events=='MISS'][i],
                s=(all_xg[events=='MISS'][i]+0.01)*3000, linewidth=2,
                edgecolor='#525252', facecolor='none',
                alpha=0.6, marker=marks[events=='MISS'][i])
         elif event_team[events=='MISS'][i]==away_team:
-            ax.scatter(xc_plot[events=='MISS'][i],
+            ax['A'].scatter(xc_plot[events=='MISS'][i],
                yc_plot[events=='MISS'][i],
                s=(all_xg[events=='MISS'][i]+0.01)*3000, linewidth=2,
-               facecolor='#525252', edgecolor='none',
-               alpha=1, marker=marks[events=='MISS'][i])
+               edgecolor='#525252', facecolor='none', linestyle='dotted',
+               alpha=0.6, marker=marks[events=='MISS'][i])
     elif strstr1 < strstr2:
         if event_team[events=='MISS'][i]==home_team:
-            ax.scatter(xc_plot[events=='MISS'][i],
+            ax['A'].scatter(xc_plot[events=='MISS'][i],
                yc_plot[events=='MISS'][i],
                s=(all_xg[events=='MISS'][i]+0.01)*3000, linewidth=2,
-               facecolor='#525252', edgecolor='none',
-               alpha=1, marker=marks[events=='MISS'][i])
+               edgecolor='#525252', facecolor='none', linestyle='dotted',
+               alpha=0.6, marker=marks[events=='MISS'][i])
         elif event_team[events=='MISS'][i]==away_team:
-            ax.scatter(xc_plot[events=='MISS'][i],
+            ax['A'].scatter(xc_plot[events=='MISS'][i],
                yc_plot[events=='MISS'][i],
                s=(all_xg[events=='MISS'][i]+0.01)*3000, linewidth=2,
                edgecolor='#525252', facecolor='none',
                alpha=0.6, marker=marks[events=='MISS'][i])
     elif per[events=='MISS'][i] == 5:
-        ax.scatter(xc_plot[events=='MISS'][i],
+        ax['A'].scatter(xc_plot[events=='MISS'][i],
                    yc_plot[events=='MISS'][i],
                    s=(all_xg[events=='MISS'][i]+0.01)*3000, linewidth=1,
                    edgecolor='k', facecolor='none', linestyle='--',
                    alpha=1, marker=marks[events=='MISS'][i])
     else:
-        ax.scatter(xc_plot[events=='MISS'][i],
+        ax['A'].scatter(xc_plot[events=='MISS'][i],
             yc_plot[events=='MISS'][i],
             s=(all_xg[events=='MISS'][i]+0.01)*3000,
             facecolor='#525252', edgecolor='none',
             alpha=0.4, marker=marks[events=='MISS'][i])
 
+home_count = 0
+away_count = 0
 for g in range(len(xc_plot[(events=='GOAL')])):
 
     so_increment = 1
+
+    if event_team[events=='GOAL'][g] == home_team:
+        home_count += 1
+    else:
+        away_count += 1
 
     scorer = descriptions[events=='GOAL'][g].split(' ')[2]
     if '(' in scorer:
@@ -204,11 +223,11 @@ for g in range(len(xc_plot[(events=='GOAL')])):
 
     if per[events=='GOAL'][g] == 4:
         mark = 'OT'
-        msize = 6000
+        msize = 4000
     elif per[events=='GOAL'][g] == 5:
         mark = 'SO' + f'{so_increment}'
         so_increment += 1
-        msize = 5000
+        msize = 4000
     else:
         mark = g+1
         msize = 1000
@@ -228,7 +247,7 @@ for g in range(len(xc_plot[(events=='GOAL')])):
 
     textmark = TextPath((0,0), str(mark))
 
-    ax.scatter(xc_plot[events=='GOAL'][g],
+    ax['A'].scatter(xc_plot[events=='GOAL'][g],
            yc_plot[events=='GOAL'][g],
 #            s=(all_xg[events=='GOAL'][g]+0.01)*1750,
            # c=cols[event_team[events=='GOAL'][g]],
@@ -237,9 +256,38 @@ for g in range(len(xc_plot[(events=='GOAL')])):
            marker=textmark, s=msize)
 
     xgh = all_xg[events=='GOAL'][g]
-    ax.annotate(f'{str(mark)} - {scorer}{stren} ({xgh:.2f} xG)', (-25, (g+1)*-5 + 40))
+    ax['y'].annotate(f'{str(mark)} - {scorer}{stren} ({xgh:.2f} xG)', (0, goalcount-g-0.5))
 
-ax.set(xlim=(-100,100), ylim=(-50,50), xticks=[], yticks=[],
+winning_team = ''
+if home_count > away_count:
+    winning_team = home_team
+else:
+    winning_team = away_team
+
+ax['A'].set(xlim=(-100,100), ylim=(-50,50), xticks=[], yticks=[],
     title=f'{away_team} @ {home_team} // {date}')
+ax['y'].set(ylim=(0,goalcount))
+ax['y'].axis('off')
+
+ax['x'].scatter(0.1, 0.8, marker=(3,0,-90),
+    facecolor=cols[winning_team], s=500, alpha=0.5, edgecolor='none')
+ax['x'].scatter(0.1, 0.5, marker=(3,0,-90),
+    facecolor='#525252', s=500, alpha=0.5, edgecolor='none')
+ax['x'].scatter(0.1, 0.2, marker=(3,0,-90), linewidth=1,
+    facecolor='none', s=500, alpha=1, edgecolor='k')
+
+ax['x'].scatter(0.6, 0.8, marker=(3,0,-90), linewidth=2,
+    edgecolor=cols[winning_team], s=500, alpha=1, facecolor='none')
+ax['x'].scatter(0.6, 0.5, marker=(3,0,-90), linewidth=2, linestyle='dotted',
+    edgecolor=cols[winning_team], s=500, alpha=1, facecolor='none')
+
+ax['x'].annotate('shot on goal', (0.18, 0.75))
+ax['x'].annotate('missed shot', (0.18, 0.45))
+ax['x'].annotate('shootout shot', (0.18, 0.15))
+ax['x'].annotate('power play', (0.68, 0.75))
+ax['x'].annotate('shorthanded', (0.68, 0.45))
+
+ax['x'].set(xlim=(0,1), ylim=(0,1))
+ax['x'].axis('off')
 
 plt.savefig(f'{date}_{away_team}@{home_team}.png')
