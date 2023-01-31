@@ -5,10 +5,16 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as cl
 import matplotlib as mpl
 from string import *
-import argparse, os, sys
+import argparse, os, sys, joblib
 
 
 ### I/O ###
+
+forest = joblib.load('fearfactorxg.joblib')
+importances = forest.feature_importances_
+
+def xG(s, xC, yC, p, sinp, ssle, z, st, pe, pxC, pyC):
+    return importances[0]*s + importances[1]*xC + importances[2]*yC + importances[3]*p + importances[4]*sinp + importances[5]*ssle + importances[6]*z + importances[7]*st + importances[8]*pe + importances[9]*pxC + importances[10]*pyC
 
 parser = argparse.ArgumentParser(description='Produce game time plot for advantage')
 parser.add_argument('-p', '--pbp', default=None, required=False, type=str, help='PBP filename - needs csv extension')
@@ -30,14 +36,14 @@ mpl.rcParams.update({'font.family': 'sans-serif'})
 ### FUNCTIONS ###
 
 def fo_parser(desc):
-    
+
     winner, players = desc.split(' - ')
     zone = winner.split(' ')[2][:3]
     winner = winner[:3]
     player1, player2 = players.split(' vs ')
     team1 = player1[:3]
     team2 = player2[:3]
-    
+
     if team1 == winner:
         winning_player = player1.split(' ')[-1]
         winning_team = team1
@@ -48,12 +54,12 @@ def fo_parser(desc):
         winning_team = team2
         losing_player = player1.split(' ')[-1]
         losing_team = team1
-        
+
     return zone, winning_player, winning_team, losing_player, losing_team
 
-def advantager(cf, sf, fw, pd, g, t, s):
-    
-    return 0.16568074432972932*cf + 0.24516896402506547*sf + 0.09792658777862182*fw + 0.07289580683179805*pd + 0.08731735986898974*g + 0.1082691462174373*t + 0.22274139094835835*s
+def advantager(bf, xf, fw, pd, g, t):
+
+    return 0.1703894985932993*bf + 0.3879001066316915*xf + 0.12503971666619593*fw + 0.08937252123832294*pd + 0.1141218637729828*g + 0.11317629309750762*t
 
 def percentager(a, b):
     if a + b == 0:
@@ -65,102 +71,102 @@ def percentager(a, b):
 def moving_average(x, w): # https://stackoverflow.com/questions/14313510/how-to-calculate-rolling-moving-average-using-python-numpy-scipy
     return np.convolve(x, np.ones(w), 'valid') / w
 
-def plusminuser_weighted(on_ice, plus_team, minus_team, plus_weights, minus_weights, cf, sf, fw, pd, g, t, s):
-    
+def plusminuser_weighted(on_ice, plus_team, minus_team, plus_weights, minus_weights, bf, xf, fw, pd, g, t):
+
     for i in on_ice:
         if i in plus_team.keys():
-            plus_team[i] += 1 * advantager(cf, sf, fw, pd, g, t, s)
+            plus_team[i] += 1 * advantager(bf, xf, fw, pd, g, t)
             plus_weights += 1
         elif i in minus_team.keys():
-            minus_team[i] -= 1 * advantager(cf, sf, fw, pd, g, t, s)
+            minus_team[i] -= 1 * advantager(bf, xf, fw, pd, g, t)
             minus_weights += 1
-            
+
     return(plus_team, minus_team, plus_weights, minus_weights)
-
-def combo_pm(on_ice, players, cf, sf, fw, pd, g, t, s):
-    
-    if all(p in on_ice for p in players):
-        return advantager(cf, sf, fw, pd, g, t, s)
-    else:
-        return 0
-
-def combo_score(player_list, player_team):
-
-    events = pbp['Event']
-    descriptions = pbp['Description']
-    
-    if player_team == home_team:
-        modifier = 1
-    elif player_team == away_team:
-        modifier = -1
-
-    combo = 0
-    n_events = 0
-
-    for j, e in enumerate(events):
-
-        on_ice = [pbp['awayPlayer1'][j], pbp['awayPlayer2'][j], pbp['awayPlayer3'][j], pbp['awayPlayer4'][j], pbp['awayPlayer5'][j], pbp['awayPlayer6'][j], pbp['homePlayer1'][j], pbp['homePlayer2'][j], pbp['homePlayer3'][j], pbp['homePlayer4'][j], pbp['homePlayer5'][j], pbp['homePlayer6'][j]]
-            
-        if e == 'SHOT':
-            if descriptions[j].startswith(home_team):
-                combo += combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
-                n_events += 1
-            elif descriptions[j].startswith(away_team):
-                combo -= combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
-                n_events += 1
-
-        elif e == 'GOAL' and pers[j] != 5:
-            if descriptions[j].startswith(home_team):
-                combo += combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
-                n_events += 1
-            elif descriptions[j].startswith(away_team):
-                combo -= combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
-                n_events += 1
-
-        elif e == 'BLOCK' or e == 'MISS':
-            if descriptions[j].startswith(home_team):
-                combo += combo_pm(on_ice, player_list, 1, 0, 0, 0, 0, 0, 0) * modifier
-                n_events += 1
-            elif descriptions[j].startswith(away_team):
-                combo -= combo_pm(on_ice, player_list, 1, 0, 0, 0, 0, 0, 0) * modifier
-                n_events += 1
-
-        elif e == 'PENL':
-            p_team = descriptions[j].split(' ')[0]
-            mins = int(descriptions[j].split(' min)')[0].split('(')[-1])
-            if p_team == home_team:
-                combo -= combo_pm(on_ice, player_list, 0, 0, 0, 1, 0, 0, 0) * modifier
-                n_events += 1
-            elif p_team == away_team:
-                combo += combo_pm(on_ice, player_list, 0, 0, 0, 1, 0, 0, 0) * modifier
-                n_events += 1
-
-        elif e == 'FAC':
-            z, w, wt, l, lt = fo_parser(descriptions[j])
-            if wt == home_team:
-                combo += combo_pm(on_ice, player_list, 0, 0, 1, 0, 0, 0, 0) * modifier
-                n_events += 1
-            elif wt == away_team:
-                combo -= combo_pm(on_ice, player_list, 0, 0, 1, 0, 0, 0, 0) * modifier
-                n_events += 1
-
-        elif e == 'GIVE':
-            if descriptions[j].startswith(home_team):
-                combo -= combo_pm(on_ice, player_list, 0, 0, 0, 0, 1, 0, 0) * modifier
-                n_events += 1
-            elif descriptions[j].startswith(away_team):
-                combo += combo_pm(on_ice, player_list, 0, 0, 0, 0, 1, 0, 0) * modifier
-                n_events += 1
-
-        elif e == 'TAKE':
-            if descriptions[j].startswith(home_team):
-                combo += combo_pm(on_ice, player_list, 0, 0, 0, 0, 0, 1, 0) * modifier
-                n_events += 1
-            elif descriptions[j].startswith(away_team):
-                combo -= combo_pm(on_ice, player_list, 0, 0, 0, 0, 0, 1, 0) * modifier
-                n_events += 1
-                                  
-    return combo / n_events
+#
+# def combo_pm(on_ice, players, cf, sf, fw, pd, g, t, s):
+#
+#     if all(p in on_ice for p in players):
+#         return advantager(cf, sf, fw, pd, g, t, s)
+#     else:
+#         return 0
+#
+# def combo_score(player_list, player_team):
+#
+#     events = pbp['Event']
+#     descriptions = pbp['Description']
+#
+#     if player_team == home_team:
+#         modifier = 1
+#     elif player_team == away_team:
+#         modifier = -1
+#
+#     combo = 0
+#     n_events = 0
+#
+#     for j, e in enumerate(events):
+#
+#         on_ice = [pbp['awayPlayer1'][j], pbp['awayPlayer2'][j], pbp['awayPlayer3'][j], pbp['awayPlayer4'][j], pbp['awayPlayer5'][j], pbp['awayPlayer6'][j], pbp['homePlayer1'][j], pbp['homePlayer2'][j], pbp['homePlayer3'][j], pbp['homePlayer4'][j], pbp['homePlayer5'][j], pbp['homePlayer6'][j]]
+#
+#         if e == 'SHOT':
+#             if descriptions[j].startswith(home_team):
+#                 combo += combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#             elif descriptions[j].startswith(away_team):
+#                 combo -= combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#
+#         elif e == 'GOAL' and pers[j] != 5:
+#             if descriptions[j].startswith(home_team):
+#                 combo += combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#             elif descriptions[j].startswith(away_team):
+#                 combo -= combo_pm(on_ice, player_list, 0, 1, 0, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#
+#         elif e == 'BLOCK' or e == 'MISS':
+#             if descriptions[j].startswith(home_team):
+#                 combo += combo_pm(on_ice, player_list, 1, 0, 0, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#             elif descriptions[j].startswith(away_team):
+#                 combo -= combo_pm(on_ice, player_list, 1, 0, 0, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#
+#         elif e == 'PENL':
+#             p_team = descriptions[j].split(' ')[0]
+#             mins = int(descriptions[j].split(' min)')[0].split('(')[-1])
+#             if p_team == home_team:
+#                 combo -= combo_pm(on_ice, player_list, 0, 0, 0, 1, 0, 0, 0) * modifier
+#                 n_events += 1
+#             elif p_team == away_team:
+#                 combo += combo_pm(on_ice, player_list, 0, 0, 0, 1, 0, 0, 0) * modifier
+#                 n_events += 1
+#
+#         elif e == 'FAC':
+#             z, w, wt, l, lt = fo_parser(descriptions[j])
+#             if wt == home_team:
+#                 combo += combo_pm(on_ice, player_list, 0, 0, 1, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#             elif wt == away_team:
+#                 combo -= combo_pm(on_ice, player_list, 0, 0, 1, 0, 0, 0, 0) * modifier
+#                 n_events += 1
+#
+#         elif e == 'GIVE':
+#             if descriptions[j].startswith(home_team):
+#                 combo -= combo_pm(on_ice, player_list, 0, 0, 0, 0, 1, 0, 0) * modifier
+#                 n_events += 1
+#             elif descriptions[j].startswith(away_team):
+#                 combo += combo_pm(on_ice, player_list, 0, 0, 0, 0, 1, 0, 0) * modifier
+#                 n_events += 1
+#
+#         elif e == 'TAKE':
+#             if descriptions[j].startswith(home_team):
+#                 combo += combo_pm(on_ice, player_list, 0, 0, 0, 0, 0, 1, 0) * modifier
+#                 n_events += 1
+#             elif descriptions[j].startswith(away_team):
+#                 combo -= combo_pm(on_ice, player_list, 0, 0, 0, 0, 0, 1, 0) * modifier
+#                 n_events += 1
+#
+#     return combo / n_events
 
 
 ### ARRAYS ###
@@ -169,20 +175,56 @@ home_team = pbp['Home_Team'][0]
 away_team = pbp['Away_Team'][0]
 date = pbp['Date'][0]
 file_out = date + '_' + away_team + 'at' + home_team
+
 events = pbp['Event']
 descriptions = pbp['Description']
 secs = pbp['Seconds_Elapsed']
+since_last = [s-secs[l-1] if l>1 else 0 for s,l in zip(secs,range(len(secs)))]
 pers = pbp['Period']
-strength = pbp['Strength']
+strength = ['crap' if s!=s else s for s in pbp['Strength']]
+zone = ['crap' if z!=z else z for z in pbp['Ev_Zone']]
+shot_type = ['crap' if t!=t else t for t in pbp['Type']]
+indices = range(len(pbp['Event']))
+prev_event = ['crap' if pbp['Event'].iloc[i-1]!=pbp['Event'].iloc[i-1] else pbp['Event'].iloc[i-1] for e, i in zip(pbp['Event'], indices)]
+xcoord = [0 if np.isnan(x)==True else x for x in pbp['xC']]
+ycoord = [0 if np.isnan(y)==True else y for y in pbp['yC']]
+prev_x = np.asarray([0 if np.isnan(pbp['xC'].iloc[i-1])==True else pbp['xC'].iloc[i-1] for e, i in zip(pbp['Event'], indices)])
+prev_y = np.asarray([0 if np.isnan(pbp['yC'].iloc[i-1])==True else pbp['yC'].iloc[i-1] for e, i in zip(pbp['Event'], indices)])
+
+for i, s in enumerate(strength):
+    if s.startswith('-'):
+        strength[i] = '-1x0'
+for i, z in enumerate(zone):
+    if type(z) != str:
+        zone[i] = 'pass'
+types_allowed = ['TIP-IN', 'DEFLECTED', 'WRIST SHOT', 'SLAP SHOT', 'SNAP SHOT', 'BACKHAND', 'WRAP-AROUND']
+for i, s in enumerate(shot_type):
+    if type(s) not in types_allowed:
+        shot_type[i] = 'pass'
+events_allowed = ['MISS', 'GIVE', 'CHL', 'SHOT', 'GOAL', 'STOP', 'GEND', 'FAC', 'BLOCK', 'HIT', 'PENL', 'TAKE', 'DELPEN', 'PSTR', 'PEND', 'EISTR']
+for i, p in enumerate(prev_event):
+    if type(p) not in events_allowed:
+        prev_event[i] = 'pass'
+
+strength_dict = {'0x5': 0, '5x6': 1, '5x2': 2, '4x4': 3, '5x3': 4, '5x1': 5, '4x3': 6, '4x6': 7, '6x6': 8, '5x0': 9, '4x5': 10, '6x1': 11, '5x7': 12, '5x4': 13, '1x5': 14, '2x5': 15, '3x5': 16, '2x3': 17, '0x0': 18, '1x1': 19, '1x0': 20, '8x5': 21, '-1x0': 22, '0x1': 23, '-1x-1': 24, '6x5': 25, '4x2': 26, '2x4': 27, '3x4': 28, '3x3': 29, '5x5': 30, 'crap':100, '6x4':101}
+zone_dict = {'Off': 0, 'Neu': 1, 'Def': 2, 'crap':100}
+shot_type_dict = {'TIP-IN': 1, 'DEFLECTED': 2, 'WRIST SHOT': 3, 'SLAP SHOT': 4, 'SNAP SHOT': 5, 'BACKHAND': 6, 'WRAP-AROUND': 7, 'crap':100, 'pass':101}
+prev_event_dict = {'MISS': 0, 'GIVE': 1, 'CHL': 2, 'SHOT': 3, 'GOAL': 4, 'STOP': 5, 'GEND': 6, 'FAC': 7, 'BLOCK': 8, 'HIT': 9, 'PENL': 10, 'TAKE': 11, 'DELPEN': 12, 'PSTR': 13, 'PEND': 14, 'EISTR': 15, 'crap':100, 'pass':101}
+
+# setting up categorical-->numerical variables
+strength_nums = [strength_dict[x] for x in strength]
+zone_nums = [zone_dict[x] for x in zone]
+shot_type_nums = [shot_type_dict[x] for x in shot_type]
+prev_event_nums = [prev_event_dict[x] for x in prev_event]
 
 home_advantage = np.zeros(len(events))
 away_advantage = np.zeros(len(events))
 home_advantage_err = np.zeros(len(events))
 away_advantage_err = np.zeros(len(events))
-corsi_for_home = 0
-corsi_for_away = 0
-sog_for_home = 0
-sog_for_away = 0
+blocked_for_home = 0
+blocked_for_away = 0
+xG_for_home = 0
+xG_for_away = 0
 goals_for_home = 0
 goals_for_away = 0
 f_home = 0
@@ -215,78 +257,78 @@ n = 0 # for SEM
 ### SCRAPING ###
 
 for j, e in enumerate(events):
-    
+
     n += 1
 
     on_ice = [pbp['awayPlayer1'][j], pbp['awayPlayer2'][j], pbp['awayPlayer3'][j], pbp['awayPlayer4'][j], pbp['awayPlayer5'][j], pbp['awayPlayer6'][j], pbp['homePlayer1'][j], pbp['homePlayer2'][j], pbp['homePlayer3'][j], pbp['homePlayer4'][j], pbp['homePlayer5'][j], pbp['homePlayer6'][j]]
-    
-    if e == 'SHOT':
+
+    if e == 'SHOT' or e == 'MISS':
+        xg = xG(strength_nums[j], xcoord[j], ycoord[j], pers[j], secs[j], since_last[j], zone_nums[j], shot_type_nums[j], prev_event_nums[j], prev_x[j], prev_y[j])
         if descriptions[j].startswith(home_team):
-            sog_for_home += 1
-            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 1, 0, 0, 0, 0, 0)
+            xG_for_home += 1
+            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 1+xg, 0, 0, 0, 0)
         elif descriptions[j].startswith(away_team):
-            sog_for_away += 1
-            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 1, 0, 0, 0, 0, 0)
+            xG_for_away += 1
+            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 1+xg, 0, 0, 0, 0)
 
     elif e == 'GOAL' and pers[j] != 5:
+        xg = xG(strength_nums[j], xcoord[j], ycoord[j], pers[j], secs[j], since_last[j], zone_nums[j], shot_type_nums[j], prev_event_nums[j], prev_x[j], prev_y[j])
         if descriptions[j].startswith(home_team):
-            sog_for_home += 1
             goals_for_home += 1
             home_goals.append((secs[j] + 1200*(pers[j]-1)) / 60)
-            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 1, 0, 0, 0, 0, 0)
+            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 1+xg, 0, 0, 0, 0)
         elif descriptions[j].startswith(away_team):
-            sog_for_away += 1
             goals_for_away += 1
             away_goals.append((secs[j] + 1200*(pers[j]-1)) / 60)
-            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 1, 0, 0, 0, 0, 0)
+            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 1+xg, 0, 0, 0, 0)
 
-    elif e == 'BLOCK' or e == 'MISS':
+    elif e == 'BLOCK':
         if descriptions[j].startswith(home_team):
-            corsi_for_home += 1
-            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 1, 0, 0, 0, 0, 0, 0)
+            blocked_for_home += 1
+            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 1, 0, 0, 0, 0, 0)
         elif descriptions[j].startswith(away_team):
-            corsi_for_away += 1
-            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 1, 0, 0, 0, 0, 0, 0)
+            blocked_for_away += 1
+            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 1, 0, 0, 0, 0, 0)
 
     elif e == 'PENL':
         p_team = descriptions[j].split(' ')[0]
         mins = int(descriptions[j].split(' min)')[0].split('(')[-1])
         if p_team == home_team:
             pmins_drawn_away += mins
-            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 0, 1, 0, 0, 0)
+            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 0, 1, 0, 0)
         elif p_team == away_team:
             pmins_drawn_home += mins
-            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 0, 1, 0, 0, 0)
+            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 0, 1, 0, 0)
 
     elif e == 'FAC':
         z, w, wt, l, lt = fo_parser(descriptions[j])
         if wt == home_team:
             f_home += 1
-            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 1, 0, 0, 0, 0)
+            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 1, 0, 0, 0)
         elif wt == away_team:
             f_away += 1
-            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 1, 0, 0, 0, 0)
+            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 1, 0, 0, 0)
 
     elif e == 'GIVE':
         if descriptions[j].startswith(home_team):
             gives_against_away += 1
-            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 0, 0, 1, 0, 0)
+            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 0, 0, 1, 0)
         elif descriptions[j].startswith(away_team):
             gives_against_home += 1
-            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 0, 0, 1, 0, 0)
+            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 0, 0, 1, 0)
 
     elif e == 'TAKE':
         if descriptions[j].startswith(home_team):
             takes_for_home += 1
-            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 0, 0, 0, 1, 0)
+            plusminuser_weighted(on_ice, home_weighted, away_weighted, home_weights, away_weights, 0, 0, 0, 0, 0, 1)
         elif descriptions[j].startswith(away_team):
             takes_for_away += 1
-            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 0, 0, 0, 1, 0)  
-            
-    cf_home = percentager(corsi_for_home, corsi_for_away)
-    cf_away = percentager(corsi_for_away, corsi_for_home)
-    sf_home = percentager(sog_for_home, sog_for_away)
-    sf_away = percentager(sog_for_away, sog_for_home)
+            plusminuser_weighted(on_ice, away_weighted, home_weighted, away_weights, home_weights, 0, 0, 0, 0, 0, 1)
+
+    bf_home = percentager(blocked_for_home, blocked_for_away)
+    bf_away = percentager(blocked_for_away, blocked_for_home)
+    xf_home = percentager(xG_for_home, xG_for_away)
+    xf_away = percentager(xG_for_away, xG_for_home)
     gf_home = percentager(goals_for_home, goals_for_away)
     gf_away = percentager(goals_for_away, goals_for_home)
     fp_home = percentager(f_home, f_away)
@@ -297,16 +339,16 @@ for j, e in enumerate(events):
     ga_away = percentager(gives_against_away, gives_against_home)
     tf_home = percentager(takes_for_home, takes_for_away)
     tf_away = percentager(takes_for_away, takes_for_home)
-    saves_home = sog_for_away - goals_for_away
-    saves_away = sog_for_home - goals_for_home
-    sp_home = percentager(saves_home, saves_away)
-    sp_away = percentager(saves_away, saves_home)
-    
-    home_advantage[j] = advantager(cf_home, sf_home, fp_home, pd_home, ga_home, tf_home, sp_home)
-    away_advantage[j] = advantager(cf_away, sf_away, fp_away, pd_away, ga_away, tf_away, sp_away)
+    # saves_home = sog_for_away - goals_for_away
+    # saves_away = sog_for_home - goals_for_home
+    # sp_home = percentager(saves_home, saves_away)
+    # sp_away = percentager(saves_away, saves_home)
 
-    home_advantage_err[j] = np.std((cf_home, sf_home, fp_home, pd_home, ga_home, tf_home, sp_home)) / np.sqrt(n)
-    away_advantage_err[j] = np.std((cf_away, sf_away, fp_away, pd_away, ga_away, tf_away, sp_away)) / np.sqrt(n)
+    home_advantage[j] = advantager(bf_home, xf_home, fp_home, pd_home, ga_home, tf_home)
+    away_advantage[j] = advantager(bf_away, xf_away, fp_away, pd_away, ga_away, tf_away)
+
+    home_advantage_err[j] = np.std((bf_home, xf_home, fp_home, pd_home, ga_home, tf_home)) / np.sqrt(n)
+    away_advantage_err[j] = np.std((bf_away, xf_away, fp_away, pd_away, ga_away, tf_away)) / np.sqrt(n)
 
 if 5 in list(set(pers)):
     so_goals = [d[:3] for (e, d, p) in zip(events, descriptions, pers) if p == 5 and e == 'GOAL']
@@ -363,34 +405,34 @@ for g in away_goalies:
     del away_weighted[g]
 away_sorted = {k: v for k, v in sorted(away_weighted.items(), key=lambda item: item[1], reverse=True)}
 
-home_combos = np.zeros((len(home_sorted), len(home_sorted)))
-# home_swapsies = np.zeros((len(home_sorted), len(home_sorted)))
-for i, k1 in enumerate(home_sorted.keys()):
-    for j, k2 in enumerate(home_sorted.keys()):
-        if k1 != k2:
-            home_combos[i, j] = combo_score([k1,k2], home_team)
-        else:
-            home_combos[i, j] = home_sorted[k1]
-    # for j, k3 in enumerate(away_sorted.keys()):
-    #     home_swapsies[i, j] = combo_score([k1,k3], home_team)
-
-away_combos = np.zeros((len(away_sorted), len(away_sorted)))
-away_swapsies = np.zeros((len(away_sorted), len(away_sorted)))
-for i, k1 in enumerate(away_sorted.keys()):
-    for j, k2 in enumerate(away_sorted.keys()):
-        if k1 != k2:
-            away_combos[i, j] = combo_score([k1,k2], away_team)
-        else:
-            away_combos[i, j] = away_sorted[k1]
-    for j, k3 in enumerate(home_sorted.keys()):
-        away_swapsies[i, j] = combo_score([k1,k3], away_team)
-
-home_cols = [(0,0,0,1), (1,1,1,1), cl.to_rgba(cols[home_team])]
-home_map = cl.LinearSegmentedColormap.from_list('home map', home_cols, 300)
-away_cols = [(0,0,0,1), (1,1,1,1), cl.to_rgba(cols[away_team])]
-away_map = cl.LinearSegmentedColormap.from_list('away map', away_cols, 300)
-swap_cols = [cl.to_rgba(cols[home_team]), (1,1,1,1), cl.to_rgba('#5f5f5f')]
-swap_map = cl.LinearSegmentedColormap.from_list('swap map', swap_cols, 300)
+# home_combos = np.zeros((len(home_sorted), len(home_sorted)))
+# # home_swapsies = np.zeros((len(home_sorted), len(home_sorted)))
+# for i, k1 in enumerate(home_sorted.keys()):
+#     for j, k2 in enumerate(home_sorted.keys()):
+#         if k1 != k2:
+#             home_combos[i, j] = combo_score([k1,k2], home_team)
+#         else:
+#             home_combos[i, j] = home_sorted[k1]
+#     # for j, k3 in enumerate(away_sorted.keys()):
+#     #     home_swapsies[i, j] = combo_score([k1,k3], home_team)
+#
+# away_combos = np.zeros((len(away_sorted), len(away_sorted)))
+# away_swapsies = np.zeros((len(away_sorted), len(away_sorted)))
+# for i, k1 in enumerate(away_sorted.keys()):
+#     for j, k2 in enumerate(away_sorted.keys()):
+#         if k1 != k2:
+#             away_combos[i, j] = combo_score([k1,k2], away_team)
+#         else:
+#             away_combos[i, j] = away_sorted[k1]
+#     for j, k3 in enumerate(home_sorted.keys()):
+#         away_swapsies[i, j] = combo_score([k1,k3], away_team)
+#
+# home_cols = [(0,0,0,1), (1,1,1,1), cl.to_rgba(cols[home_team])]
+# home_map = cl.LinearSegmentedColormap.from_list('home map', home_cols, 300)
+# away_cols = [(0,0,0,1), (1,1,1,1), cl.to_rgba(cols[away_team])]
+# away_map = cl.LinearSegmentedColormap.from_list('away map', away_cols, 300)
+# swap_cols = [cl.to_rgba(cols[home_team]), (1,1,1,1), cl.to_rgba('#5f5f5f')]
+# swap_map = cl.LinearSegmentedColormap.from_list('swap map', swap_cols, 300)
 
 
 #### https://stackoverflow.com/questions/35607818/index-a-2d-numpy-array-with-2-lists-of-indices
@@ -455,66 +497,66 @@ plt.title(f'{away_team} @ {home_team} // {date}')
 plt.savefig(f'{file_out}_tide.png')
 plt.close()
 
-fig, ax = plt.subplots(1, constrained_layout=True, figsize=(8,8))
-
-cmnorm = cl.TwoSlopeNorm(vcenter=0)
-home_labels = [capwords(k) for k in home_sorted.keys()]
-
-vibes = ax.imshow(home_combos, cmap=home_map, norm=cmnorm)
-
-home_ticks = [np.min(home_combos)] + list(range(int(np.trunc(np.min(home_combos))), int(np.trunc(np.max(home_combos)))+1)) + [np.max(home_combos)]
-home_ticklabels = [away_team] + list(range(int(np.trunc(np.min(home_combos))), int(np.trunc(np.max(home_combos)))+1)) + [home_team]
-cb = plt.colorbar(vibes, label='player score', ticks=home_ticks, fraction=0.05, pad=0.04)
-cb.ax.set_yticklabels(home_ticklabels)
-
-ax.set_xticks(range(len(home_labels)))
-ax.set_xticklabels(home_labels, rotation=90)
-ax.set_yticks(range(len(home_labels)))
-ax.set_yticklabels(home_labels)
-ax.set_title(fr'{away_team} @ $\textbf{{{home_team}}}$ // {date}')
-
-plt.savefig(f'{file_out}_home.png')
-plt.close()
-
-fig, ax = plt.subplots(1, constrained_layout=True, figsize=(8,8))
-
-cmnorm = cl.TwoSlopeNorm(vcenter=0)
-away_labels = [capwords(k) for k in away_sorted.keys()]
-
-vibes = ax.imshow(away_combos, cmap=away_map, norm=cmnorm)
-
-away_ticks = [np.min(away_combos)] + list(range(int(np.trunc(np.min(away_combos))), int(np.trunc(np.max(away_combos)))+1)) + [np.max(away_combos)]
-away_ticklabels = [home_team] + list(range(int(np.trunc(np.min(away_combos))), int(np.trunc(np.max(away_combos)))+1)) + [away_team]
-cb = plt.colorbar(vibes, label='player score', ticks=away_ticks, fraction=0.05, pad=0.04)
-cb.ax.set_yticklabels(away_ticklabels)
-
-ax.set_xticks(range(len(away_labels)))
-ax.set_xticklabels(away_labels, rotation=90)
-ax.set_yticks(range(len(away_labels)))
-ax.set_yticklabels(away_labels)
-ax.set_title(fr'$\textbf{{{away_team}}}$ @ {home_team} // {date}')
-
-plt.savefig(f'{file_out}_away.png')
-plt.close()
-
-fig, ax = plt.subplots(1, constrained_layout=True, figsize=(8,8))
-
-cmnorm = cl.TwoSlopeNorm(vcenter=0)
-
-vibes = ax.imshow(away_swapsies, cmap='twilight_shifted', norm=cmnorm)
-
-swap_ticks = [np.min(away_swapsies)] + list(range(int(np.trunc(np.min(away_swapsies))), int(np.trunc(np.max(away_swapsies)))+1)) + [np.max(away_swapsies)]
-swap_ticklabels = [home_team] + list(range(int(np.trunc(np.min(away_swapsies))), int(np.trunc(np.max(away_swapsies)))+1)) + [away_team]
-cb = plt.colorbar(vibes, label='player score', ticks=swap_ticks, fraction=0.05, pad=0.04)
-cb.ax.set_yticklabels(swap_ticklabels)
-
-ax.set_xticks(range(len(home_labels)))
-ax.set_xticklabels(home_labels, rotation=90)
-ax.set_yticks(range(len(away_labels)))
-ax.set_yticklabels(away_labels)
-ax.set_title(f'{away_team} @ {home_team} // {date}')
-
-plt.savefig(f'{file_out}_match.png')
-plt.close()
+# fig, ax = plt.subplots(1, constrained_layout=True, figsize=(8,8))
+#
+# cmnorm = cl.TwoSlopeNorm(vcenter=0)
+# home_labels = [capwords(k) for k in home_sorted.keys()]
+#
+# vibes = ax.imshow(home_combos, cmap=home_map, norm=cmnorm)
+#
+# home_ticks = [np.min(home_combos)] + list(range(int(np.trunc(np.min(home_combos))), int(np.trunc(np.max(home_combos)))+1)) + [np.max(home_combos)]
+# home_ticklabels = [away_team] + list(range(int(np.trunc(np.min(home_combos))), int(np.trunc(np.max(home_combos)))+1)) + [home_team]
+# cb = plt.colorbar(vibes, label='player score', ticks=home_ticks, fraction=0.05, pad=0.04)
+# cb.ax.set_yticklabels(home_ticklabels)
+#
+# ax.set_xticks(range(len(home_labels)))
+# ax.set_xticklabels(home_labels, rotation=90)
+# ax.set_yticks(range(len(home_labels)))
+# ax.set_yticklabels(home_labels)
+# ax.set_title(fr'{away_team} @ $\textbf{{{home_team}}}$ // {date}')
+#
+# plt.savefig(f'{file_out}_home.png')
+# plt.close()
+#
+# fig, ax = plt.subplots(1, constrained_layout=True, figsize=(8,8))
+#
+# cmnorm = cl.TwoSlopeNorm(vcenter=0)
+# away_labels = [capwords(k) for k in away_sorted.keys()]
+#
+# vibes = ax.imshow(away_combos, cmap=away_map, norm=cmnorm)
+#
+# away_ticks = [np.min(away_combos)] + list(range(int(np.trunc(np.min(away_combos))), int(np.trunc(np.max(away_combos)))+1)) + [np.max(away_combos)]
+# away_ticklabels = [home_team] + list(range(int(np.trunc(np.min(away_combos))), int(np.trunc(np.max(away_combos)))+1)) + [away_team]
+# cb = plt.colorbar(vibes, label='player score', ticks=away_ticks, fraction=0.05, pad=0.04)
+# cb.ax.set_yticklabels(away_ticklabels)
+#
+# ax.set_xticks(range(len(away_labels)))
+# ax.set_xticklabels(away_labels, rotation=90)
+# ax.set_yticks(range(len(away_labels)))
+# ax.set_yticklabels(away_labels)
+# ax.set_title(fr'$\textbf{{{away_team}}}$ @ {home_team} // {date}')
+#
+# plt.savefig(f'{file_out}_away.png')
+# plt.close()
+#
+# fig, ax = plt.subplots(1, constrained_layout=True, figsize=(8,8))
+#
+# cmnorm = cl.TwoSlopeNorm(vcenter=0)
+#
+# vibes = ax.imshow(away_swapsies, cmap='twilight_shifted', norm=cmnorm)
+#
+# swap_ticks = [np.min(away_swapsies)] + list(range(int(np.trunc(np.min(away_swapsies))), int(np.trunc(np.max(away_swapsies)))+1)) + [np.max(away_swapsies)]
+# swap_ticklabels = [home_team] + list(range(int(np.trunc(np.min(away_swapsies))), int(np.trunc(np.max(away_swapsies)))+1)) + [away_team]
+# cb = plt.colorbar(vibes, label='player score', ticks=swap_ticks, fraction=0.05, pad=0.04)
+# cb.ax.set_yticklabels(swap_ticklabels)
+#
+# ax.set_xticks(range(len(home_labels)))
+# ax.set_xticklabels(home_labels, rotation=90)
+# ax.set_yticks(range(len(away_labels)))
+# ax.set_yticklabels(away_labels)
+# ax.set_title(f'{away_team} @ {home_team} // {date}')
+#
+# plt.savefig(f'{file_out}_match.png')
+# plt.close()
 
 os.chdir('..')
